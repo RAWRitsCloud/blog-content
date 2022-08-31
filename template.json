@@ -1,0 +1,435 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "workflow_name": {
+            "type": "String"
+        },
+        "connections_linkedinv2_externalid": {
+            "type": "String"
+        },
+        "connections_rss_externalid": {
+            "type": "String"
+        },
+        "connections_twitter_externalid": {
+            "type": "String"
+        }
+    },
+    "variables": {},
+    "resources": [
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2017-07-01",
+            "name": "[parameters('workflow_name')]",
+            "location": "uksouth",
+            "properties": {
+                "state": "Enabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "$connections": {
+                            "defaultValue": {},
+                            "type": "Object"
+                        }
+                    },
+                    "triggers": {
+                        "Recurrence": {
+                            "recurrence": {
+                                "frequency": "Day",
+                                "interval": 1,
+                                "schedule": {
+                                    "hours": [
+                                        "18"
+                                    ],
+                                    "minutes": [
+                                        0
+                                    ]
+                                },
+                                "timeZone": "GMT Standard Time"
+                            },
+                            "evaluatedRecurrence": {
+                                "frequency": "Day",
+                                "interval": 1,
+                                "schedule": {
+                                    "hours": [
+                                        "18"
+                                    ],
+                                    "minutes": [
+                                        0
+                                    ]
+                                },
+                                "timeZone": "GMT Standard Time"
+                            },
+                            "type": "Recurrence"
+                        }
+                    },
+                    "actions": {
+                        "Delay": {
+                            "runAfter": {
+                                "Run_the_drafts_workflow_in_Github": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Wait",
+                            "inputs": {
+                                "interval": {
+                                    "count": 10,
+                                    "unit": "Minute"
+                                }
+                            }
+                        },
+                        "Filter_to_Last_2_days": {
+                            "runAfter": {
+                                "Parse_RSS_Feed": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Query",
+                            "inputs": {
+                                "from": "@body('Parse_RSS_Feed')",
+                                "where": "@greaterOrEquals(item()['publishDate'], addDays(utcNow(), -1))"
+                            }
+                        },
+                        "Get_Website_Feed": {
+                            "runAfter": {
+                                "Delay": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "ApiConnection",
+                            "inputs": {
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['rss']['connectionId']"
+                                    }
+                                },
+                                "method": "get",
+                                "path": "/ListFeedItems",
+                                "queries": {
+                                    "feedUrl": "https://www.blogurl.com/feed.xml",
+                                    "sinceProperty": "PublishDate"
+                                }
+                            }
+                        },
+                        "Item_Loop": {
+                            "foreach": "@body('Filter_to_Last_2_days')",
+                            "actions": {
+                                "Create_Short_Link": {
+                                    "runAfter": {
+                                        "Hashtag_Loop": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "Http",
+                                    "inputs": {
+                                        "body": {
+                                            "allowDuplicates": "false",
+                                            "domain": "short.domain",
+                                            "originalURL": "@items('Item_Loop')?['primaryLink']",
+                                            "title": "@items('Item_Loop')?['title']"
+                                        },
+                                        "headers": {
+                                            "authorization": "AUTHKEY",
+                                            "content-type": "application/json"
+                                        },
+                                        "method": "POST",
+                                        "uri": "https://api.short.io/links"
+                                    }
+                                },
+                                "Hashtag_Loop": {
+                                    "foreach": "@items('Item_Loop')?['categories']",
+                                    "actions": {
+                                        "Append_to_string_variable": {
+                                            "runAfter": {},
+                                            "type": "AppendToStringVariable",
+                                            "inputs": {
+                                                "name": "hashtags",
+                                                "value": "@{items('Hashtag_Loop')} "
+                                            }
+                                        }
+                                    },
+                                    "runAfter": {},
+                                    "type": "Foreach"
+                                },
+                                "Parse_Short_Link_JSON": {
+                                    "runAfter": {
+                                        "Create_Short_Link": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "ParseJson",
+                                    "inputs": {
+                                        "content": "@body('Create_Short_Link')",
+                                        "schema": {
+                                            "properties": {
+                                                "AutodeletedAt": {},
+                                                "DomainId": {
+                                                    "type": "integer"
+                                                },
+                                                "OwnerId": {
+                                                    "type": "integer"
+                                                },
+                                                "androidURL": {},
+                                                "archived": {
+                                                    "type": "boolean"
+                                                },
+                                                "cloaking": {},
+                                                "createdAt": {
+                                                    "type": "string"
+                                                },
+                                                "expiredURL": {},
+                                                "expiresAt": {},
+                                                "icon": {},
+                                                "idString": {
+                                                    "type": "string"
+                                                },
+                                                "iphoneURL": {},
+                                                "originalURL": {
+                                                    "type": "string"
+                                                },
+                                                "path": {
+                                                    "type": "string"
+                                                },
+                                                "redirectType": {},
+                                                "secureShortURL": {
+                                                    "type": "string"
+                                                },
+                                                "shortURL": {
+                                                    "type": "string"
+                                                },
+                                                "source": {},
+                                                "splitURL": {},
+                                                "title": {},
+                                                "updatedAt": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    }
+                                },
+                                "Post_a_tweet": {
+                                    "runAfter": {
+                                        "Set_primaryLinkUri": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "ApiConnection",
+                                    "inputs": {
+                                        "host": {
+                                            "connection": {
+                                                "name": "@parameters('$connections')['twitter']['connectionId']"
+                                            }
+                                        },
+                                        "method": "post",
+                                        "path": "/posttweet",
+                                        "queries": {
+                                            "tweetText": "@{items('Item_Loop')?['title']} @{variables('hashtags')} @{variables('primaryLinkUri')}"
+                                        }
+                                    }
+                                },
+                                "Set_primaryLinkUri": {
+                                    "runAfter": {
+                                        "Parse_Short_Link_JSON": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "SetVariable",
+                                    "inputs": {
+                                        "name": "primaryLinkUri",
+                                        "value": "@body('Parse_Short_Link_JSON')?['secureShortURL']"
+                                    }
+                                },
+                                "Share_an_article_V2": {
+                                    "runAfter": {
+                                        "Set_primaryLinkUri": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "ApiConnection",
+                                    "inputs": {
+                                        "body": {
+                                            "content": {
+                                                "content-url": "@variables('primaryLinkUri')",
+                                                "title": "@items('Item_Loop')?['title']"
+                                            },
+                                            "distribution": {
+                                                "linkedInDistributionTarget": {
+                                                    "visibleToGuest": true
+                                                }
+                                            },
+                                            "text": {
+                                                "text": "@{items('Item_Loop')?['summary']} @{variables('hashtags')}"
+                                            }
+                                        },
+                                        "host": {
+                                            "connection": {
+                                                "name": "@parameters('$connections')['linkedinv2']['connectionId']"
+                                            }
+                                        },
+                                        "method": "post",
+                                        "path": "/v2/people/shares"
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "Start_primaryLinkUri": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Foreach"
+                        },
+                        "Parse_RSS_Feed": {
+                            "runAfter": {
+                                "Get_Website_Feed": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "ParseJson",
+                            "inputs": {
+                                "content": "@body('Get_Website_Feed')",
+                                "schema": {
+                                    "items": {
+                                        "properties": {
+                                            "categories": {
+                                                "items": {
+                                                    "type": "string"
+                                                },
+                                                "type": "array"
+                                            },
+                                            "copyright": {
+                                                "type": "string"
+                                            },
+                                            "id": {
+                                                "type": "string"
+                                            },
+                                            "links": {
+                                                "items": {
+                                                    "type": "string"
+                                                },
+                                                "type": "array"
+                                            },
+                                            "primaryLink": {
+                                                "type": "string"
+                                            },
+                                            "publishDate": {
+                                                "type": "string"
+                                            },
+                                            "summary": {
+                                                "type": "string"
+                                            },
+                                            "title": {
+                                                "type": "string"
+                                            },
+                                            "updatedOn": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "required": [
+                                            "id",
+                                            "title",
+                                            "primaryLink",
+                                            "links",
+                                            "updatedOn",
+                                            "publishDate",
+                                            "summary",
+                                            "copyright",
+                                            "categories"
+                                        ],
+                                        "type": "object"
+                                    },
+                                    "type": "array"
+                                }
+                            }
+                        },
+                        "Run_the_drafts_workflow_in_Github": {
+                            "runAfter": {},
+                            "type": "Http",
+                            "inputs": {
+                                "body": {
+                                    "ref": "gh-pages"
+                                },
+                                "headers": {
+                                    "authorization": "Bearer AUTHKEY"
+                                },
+                                "method": "POST",
+                                "uri": "https://api.github.com/repos/GITUSER/GITPAGEURL.github.io/actions/workflows/publish_drafts.yml/dispatches"
+                            }
+                        },
+                        "Start_a_Hashtag_String": {
+                            "runAfter": {
+                                "Filter_to_Last_2_days": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "hashtags",
+                                        "type": "string"
+                                    }
+                                ]
+                            }
+                        },
+                        "Start_primaryLink": {
+                            "runAfter": {
+                                "Start_a_Hashtag_String": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "primaryLink",
+                                        "type": "string"
+                                    }
+                                ]
+                            }
+                        },
+                        "Start_primaryLinkUri": {
+                            "runAfter": {
+                                "Start_primaryLink": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "primaryLinkUri",
+                                        "type": "string"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "outputs": {}
+                },
+                "parameters": {
+                    "$connections": {
+                        "value": {
+                            "linkedinv2": {
+                                "connectionId": "[parameters('connections_linkedinv2_externalid')]",
+                                "connectionName": "linkedinv2",
+                                "id": "/subscriptions/SUBSCRIPTIONID/providers/Microsoft.Web/locations/uksouth/managedApis/linkedinv2"
+                            },
+                            "rss": {
+                                "connectionId": "[parameters('connections_rss_externalid')]",
+                                "connectionName": "rss",
+                                "id": "/subscriptions/SUBSCRIPTIONID/providers/Microsoft.Web/locations/uksouth/managedApis/rss"
+                            },
+                            "twitter": {
+                                "connectionId": "[parameters('connections_twitter_externalid')]",
+                                "connectionName": "twitter",
+                                "id": "/subscriptions/SUBSCRIPTIONID/providers/Microsoft.Web/locations/uksouth/managedApis/twitter"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}
