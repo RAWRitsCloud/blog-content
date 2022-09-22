@@ -1,0 +1,683 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "publicIPLogicAppName": {
+            "type": "string",
+            "metadata": {
+                "description": "The name of the Public IP Logic App Name"
+            }
+        },
+        "unattachedDisksLogicAppName": {
+            "type": "string",
+            "metadata": {
+                "description": "The name of the Unattached Disks Logic App Name"
+            }
+        }
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Web/connections",
+            "apiVersion": "2016-06-01",
+            "name": "azureloganalyticsdatacollector",
+            "location": "[resourceGroup().location]",
+            "kind": "V1",
+            "properties": {
+                "displayName": "ManagementLA",
+                "customParameterValues": {},
+                "nonSecretParameterValues": {},
+                "api": {
+                    "name": "azureloganalyticsdatacollector",
+                    "displayName": "Azure Log Analytics Data Collector",
+                    "description": "Azure Log Analytics Data Collector will send data to any Azure Log Analytics workspace.",
+                    "iconUri": "https://connectoricons-prod.azureedge.net/releases/v1.0.1549/1.0.1549.2680/azureloganalyticsdatacollector/icon.png",
+                    "brandColor": "#0072C6",
+                    "id": "[concat('/subscriptions/',subscription().subscriptionId,'/providers/Microsoft.Web/locations/',resourceGroup().location,'/managedApis/azureloganalyticsdatacollector')]",
+                    "type": "Microsoft.Web/locations/managedApis"
+                },
+                "testLinks": []
+            }
+        },
+        {
+            "type": "Microsoft.Web/connections",
+            "apiVersion": "2016-06-01",
+            "name": "arm",
+            "location": "[resourceGroup().location]",
+            "kind": "V1",
+            "properties": {
+                "displayName": "arm-managed-id",
+                "customParameterValues": {},
+                "parameterValueType": "Alternative",
+                "api": {
+                    "name": "arm",
+                    "displayName": "Azure Resource Manager",
+                    "description": "Azure Resource Manager exposes the APIs to manage all of your Azure resources.",
+                    "iconUri": "https://connectoricons-prod.azureedge.net/laborbol/fixes/path-traversal/1.0.1552.2695/arm/icon.png",
+                    "brandColor": "#003056",
+                    "id": "[concat('/subscriptions/',subscription().subscriptionId,'/providers/Microsoft.Web/locations/',resourceGroup().location,'/managedApis/arm')]",
+                    "type": "Microsoft.Web/locations/managedApis"
+                },
+                "testLinks": []
+            }
+        },
+        {
+            "type": "Microsoft.Logic/workflows",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/connections','arm')]",
+                "[resourceId('Microsoft.Web/connections','azureloganalyticsdatacollector')]"
+            ],
+            "apiVersion": "2017-07-01",
+            "name": "[parameters('publicIPLogicAppName')]",
+            "location": "[resourceGroup().location]",
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "properties": {
+                "state": "Enabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "$connections": {
+                            "defaultValue": {},
+                            "type": "Object"
+                        }
+                    },
+                    "triggers": {
+                        "Recurrence": {
+                            "recurrence": {
+                                "frequency": "Week",
+                                "interval": 1,
+                                "schedule": {
+                                    "hours": [
+                                        "7"
+                                    ],
+                                    "minutes": [
+                                        0
+                                    ],
+                                    "weekDays": [
+                                        "Monday"
+                                    ]
+                                },
+                                "timeZone": "GMT Standard Time"
+                            },
+                            "evaluatedRecurrence": {
+                                "frequency": "Week",
+                                "interval": 1,
+                                "schedule": {
+                                    "hours": [
+                                        "7"
+                                    ],
+                                    "minutes": [
+                                        0
+                                    ],
+                                    "weekDays": [
+                                        "Monday"
+                                    ]
+                                },
+                                "timeZone": "GMT Standard Time"
+                            },
+                            "type": "Recurrence"
+                        }
+                    },
+                    "actions": {
+                        "For_each": {
+                            "foreach": "@body('List_subscriptions')?['value']",
+                            "actions": {
+                                "For_each_resource_in_subscriptions": {
+                                    "foreach": "@body('List_resources_by_subscription')?['value']",
+                                    "actions": {
+                                        "Condition": {
+                                            "actions": {
+                                                "Read_a_resource": {
+                                                    "runAfter": {
+                                                        "Set_variable_resourceGroupName": [
+                                                            "Succeeded"
+                                                        ]
+                                                    },
+                                                    "type": "ApiConnection",
+                                                    "inputs": {
+                                                        "host": {
+                                                            "connection": {
+                                                                "name": "@parameters('$connections')['arm']['connectionId']"
+                                                            }
+                                                        },
+                                                        "method": "get",
+                                                        "path": "/subscriptions/@{encodeURIComponent(items('For_each')?['subscriptionId'])}/resourcegroups/@{encodeURIComponent(variables('resourceGroupName'))}/providers/@{encodeURIComponent('Microsoft.Network/publicipaddresses')}/@{encodeURIComponent(items('For_each_resource_in_subscriptions')?['name'])}",
+                                                        "queries": {
+                                                            "x-ms-api-version": "2022-01-01"
+                                                        }
+                                                    }
+                                                },
+                                                "Set_variable": {
+                                                    "runAfter": {
+                                                        "Read_a_resource": [
+                                                            "Succeeded"
+                                                        ]
+                                                    },
+                                                    "type": "SetVariable",
+                                                    "inputs": {
+                                                        "name": "resourceGroupName",
+                                                        "value": "@{null}"
+                                                    }
+                                                },
+                                                "Set_variable_resourceGroupName": {
+                                                    "runAfter": {
+                                                        "Set_variable_resourceid_original": [
+                                                            "Succeeded"
+                                                        ]
+                                                    },
+                                                    "type": "SetVariable",
+                                                    "inputs": {
+                                                        "name": "resourceGroupName",
+                                                        "value": "@{substring(variables('resourceid_original'),67,indexOf(substring(variables('resourceid_original'),67),'/'))}"
+                                                    }
+                                                },
+                                                "Set_variable_resourceid_original": {
+                                                    "runAfter": {},
+                                                    "type": "SetVariable",
+                                                    "inputs": {
+                                                        "name": "resourceid_original",
+                                                        "value": "@items('For_each_resource_in_subscriptions')?['id']"
+                                                    }
+                                                },
+                                                "if_ipConfiguration_exists": {
+                                                    "actions": {
+                                                        "Send_Data": {
+                                                            "runAfter": {},
+                                                            "type": "ApiConnection",
+                                                            "inputs": {
+                                                                "body": "{\n\"resourceName\" : \"@{items('For_each_resource_in_subscriptions')?['name']}\",\n\"resourceId\": \"@{items('For_each_resource_in_subscriptions')?['id']}\",\n\"type\":\"publicipaddresses\",\n\"location\":\"@{body('Read_a_resource')?['location']}\"\n}",
+                                                                "headers": {
+                                                                    "Log-Type": "unattached_resources"
+                                                                },
+                                                                "host": {
+                                                                    "connection": {
+                                                                        "name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
+                                                                    }
+                                                                },
+                                                                "method": "post",
+                                                                "path": "/api/logs"
+                                                            }
+                                                        }
+                                                    },
+                                                    "runAfter": {
+                                                        "Set_variable": [
+                                                            "Succeeded"
+                                                        ]
+                                                    },
+                                                    "expression": {
+                                                        "and": [
+                                                            {
+                                                                "not": {
+                                                                    "contains": [
+                                                                        "@body('Read_a_resource')?['properties']",
+                                                                        "ipConfiguration"
+                                                                    ]
+                                                                }
+                                                            }
+                                                        ]
+                                                    },
+                                                    "type": "If"
+                                                }
+                                            },
+                                            "runAfter": {},
+                                            "expression": {
+                                                "and": [
+                                                    {
+                                                        "equals": [
+                                                            "@items('For_each_resource_in_subscriptions')?['type']",
+                                                            "Microsoft.Network/publicIPAddresses"
+                                                        ]
+                                                    }
+                                                ]
+                                            },
+                                            "type": "If"
+                                        }
+                                    },
+                                    "runAfter": {
+                                        "List_resources_by_subscription": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "Foreach"
+                                },
+                                "List_resources_by_subscription": {
+                                    "runAfter": {},
+                                    "type": "ApiConnection",
+                                    "inputs": {
+                                        "host": {
+                                            "connection": {
+                                                "name": "@parameters('$connections')['arm']['connectionId']"
+                                            }
+                                        },
+                                        "method": "get",
+                                        "path": "/subscriptions/@{encodeURIComponent(items('For_each')?['subscriptionId'])}/resources",
+                                        "queries": {
+                                            "x-ms-api-version": "2016-06-01"
+                                        }
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "Initialize_resourceGroupName": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Foreach",
+                            "runtimeConfiguration": {
+                                "concurrency": {
+                                    "repetitions": 1
+                                }
+                            }
+                        },
+                        "Initialize_resourceGroupName": {
+                            "runAfter": {
+                                "Initialize_variable_resourceid_original": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "resourceGroupName",
+                                        "type": "string"
+                                    }
+                                ]
+                            }
+                        },
+                        "Initialize_variable": {
+                            "runAfter": {
+                                "List_subscriptions": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "resources",
+                                        "type": "array"
+                                    }
+                                ]
+                            }
+                        },
+                        "Initialize_variable_resourceid": {
+                            "runAfter": {
+                                "Initialize_variable": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "resourceid",
+                                        "type": "string"
+                                    }
+                                ]
+                            }
+                        },
+                        "Initialize_variable_resourceid_original": {
+                            "runAfter": {
+                                "Initialize_variable_resourceid": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "resourceid_original",
+                                        "type": "string"
+                                    }
+                                ]
+                            }
+                        },
+                        "List_subscriptions": {
+                            "runAfter": {},
+                            "type": "ApiConnection",
+                            "inputs": {
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['arm']['connectionId']"
+                                    }
+                                },
+                                "method": "get",
+                                "path": "/subscriptions",
+                                "queries": {
+                                    "x-ms-api-version": "2016-06-01"
+                                }
+                            }
+                        }
+                    },
+                    "outputs": {}
+                },
+                "parameters": {
+                    "$connections": {
+                        "value": {
+                            "arm": {
+                                "connectionId": "[concat('/subscriptions/',subscription().subscriptionId,'/resourceGroups/',resourceGroup().name,'/providers/Microsoft.Web/connections/arm')]",
+                                "connectionName": "arm",
+                                "connectionProperties": {
+                                    "authentication": {
+                                        "type": "ManagedServiceIdentity"
+                                    }
+                                },
+                                "id": "[concat('/subscriptions/',subscription().subscriptionId,'/providers/Microsoft.Web/locations/',resourceGroup().location,'/managedApis/arm')]"
+                            },
+                            "azureloganalyticsdatacollector": {
+                                "connectionId": "[concat('/subscriptions/',subscription().subscriptionId,'/resourceGroups/',resourceGroup().name,'/providers/Microsoft.Web/connections/azureloganalyticsdatacollector')]",
+                                "connectionName": "azureloganalyticsdatacollector",
+                                "id": "[concat('/subscriptions/',subscription().subscriptionId,'/providers/Microsoft.Web/locations/',resourceGroup().location,'/managedApis/azureloganalyticsdatacollector')]"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Logic/workflows",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/connections','arm')]",
+                "[resourceId('Microsoft.Web/connections','azureloganalyticsdatacollector')]"
+            ],
+            "apiVersion": "2017-07-01",
+            "name": "[parameters('unattachedDisksLogicAppName')]",
+            "location": "[resourceGroup().location]",
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "properties": {
+                "state": "Enabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "$connections": {
+                            "defaultValue": {},
+                            "type": "Object"
+                        }
+                    },
+                    "triggers": {
+                        "Recurrence": {
+                            "recurrence": {
+                                "frequency": "Week",
+                                "interval": 1,
+                                "schedule": {
+                                    "hours": [
+                                        "7"
+                                    ],
+                                    "minutes": [
+                                        0
+                                    ],
+                                    "weekDays": [
+                                        "Monday"
+                                    ]
+                                },
+                                "timeZone": "GMT Standard Time"
+                            },
+                            "evaluatedRecurrence": {
+                                "frequency": "Week",
+                                "interval": 1,
+                                "schedule": {
+                                    "hours": [
+                                        "7"
+                                    ],
+                                    "minutes": [
+                                        0
+                                    ],
+                                    "weekDays": [
+                                        "Monday"
+                                    ]
+                                },
+                                "timeZone": "GMT Standard Time"
+                            },
+                            "type": "Recurrence"
+                        }
+                    },
+                    "actions": {
+                        "For_each": {
+                            "foreach": "@body('List_subscriptions')?['value']",
+                            "actions": {
+                                "For_each_resource_in_subscriptions": {
+                                    "foreach": "@body('List_resources_by_subscription')?['value']",
+                                    "actions": {
+                                        "Condition": {
+                                            "actions": {
+                                                "Read_a_resource": {
+                                                    "runAfter": {
+                                                        "Set_variable_resourceGroupName": [
+                                                            "Succeeded"
+                                                        ]
+                                                    },
+                                                    "type": "ApiConnection",
+                                                    "inputs": {
+                                                        "host": {
+                                                            "connection": {
+                                                                "name": "@parameters('$connections')['arm']['connectionId']"
+                                                            }
+                                                        },
+                                                        "method": "get",
+                                                        "path": "/subscriptions/@{encodeURIComponent(items('For_each')?['subscriptionId'])}/resourcegroups/@{encodeURIComponent(variables('resourceGroupName'))}/providers/@{encodeURIComponent('Microsoft.Compute/disks')}/@{encodeURIComponent(items('For_each_resource_in_subscriptions')?['name'])}",
+                                                        "queries": {
+                                                            "x-ms-api-version": "2022-03-02"
+                                                        }
+                                                    }
+                                                },
+                                                "Set_variable_managedBy": {
+                                                    "runAfter": {
+                                                        "Read_a_resource": [
+                                                            "Succeeded"
+                                                        ]
+                                                    },
+                                                    "type": "SetVariable",
+                                                    "inputs": {
+                                                        "name": "managedBy",
+                                                        "value": "@body('Read_a_resource')?['managedBy']"
+                                                    }
+                                                },
+                                                "Set_variable_resourceGroupName": {
+                                                    "runAfter": {
+                                                        "Set_variable_resourceid_original": [
+                                                            "Succeeded"
+                                                        ]
+                                                    },
+                                                    "type": "SetVariable",
+                                                    "inputs": {
+                                                        "name": "resourceGroupName",
+                                                        "value": "@{substring(variables('resourceid_original'),67,indexOf(substring(variables('resourceid_original'),67),'/'))}"
+                                                    }
+                                                },
+                                                "Set_variable_resourceid_original": {
+                                                    "runAfter": {},
+                                                    "type": "SetVariable",
+                                                    "inputs": {
+                                                        "name": "resourceid_original",
+                                                        "value": "@items('For_each_resource_in_subscriptions')?['id']"
+                                                    }
+                                                },
+                                                "if_managedBy_is_empty": {
+                                                    "actions": {
+                                                        "Send_Data": {
+                                                            "runAfter": {},
+                                                            "type": "ApiConnection",
+                                                            "inputs": {
+                                                                "body": "{\n\"resourceName\" : \"@{items('For_each_resource_in_subscriptions')?['name']}\",\n\"resourceId\": \"@{items('For_each_resource_in_subscriptions')?['id']}\",\n\"type\":\"managedDisk\",\n\"location\":\"@{body('Read_a_resource')?['location']}\"\n}",
+                                                                "headers": {
+                                                                    "Log-Type": "unattached_resources"
+                                                                },
+                                                                "host": {
+                                                                    "connection": {
+                                                                        "name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
+                                                                    }
+                                                                },
+                                                                "method": "post",
+                                                                "path": "/api/logs"
+                                                            }
+                                                        }
+                                                    },
+                                                    "runAfter": {
+                                                        "Set_variable_managedBy": [
+                                                            "Succeeded"
+                                                        ]
+                                                    },
+                                                    "expression": {
+                                                        "and": [
+                                                            {
+                                                                "not": {
+                                                                    "contains": [
+                                                                        "@variables('managedBy')",
+                                                                        "/subscription"
+                                                                    ]
+                                                                }
+                                                            }
+                                                        ]
+                                                    },
+                                                    "type": "If"
+                                                }
+                                            },
+                                            "runAfter": {},
+                                            "expression": {
+                                                "and": [
+                                                    {
+                                                        "equals": [
+                                                            "@items('For_each_resource_in_subscriptions')?['type']",
+                                                            "Microsoft.Compute/disks"
+                                                        ]
+                                                    }
+                                                ]
+                                            },
+                                            "type": "If"
+                                        }
+                                    },
+                                    "runAfter": {
+                                        "List_resources_by_subscription": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "Foreach"
+                                },
+                                "List_resources_by_subscription": {
+                                    "runAfter": {},
+                                    "type": "ApiConnection",
+                                    "inputs": {
+                                        "host": {
+                                            "connection": {
+                                                "name": "@parameters('$connections')['arm']['connectionId']"
+                                            }
+                                        },
+                                        "method": "get",
+                                        "path": "/subscriptions/@{encodeURIComponent(items('For_each')?['subscriptionId'])}/resources",
+                                        "queries": {
+                                            "x-ms-api-version": "2016-06-01"
+                                        }
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "Initialize_managedBy": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Foreach",
+                            "runtimeConfiguration": {
+                                "concurrency": {
+                                    "repetitions": 1
+                                }
+                            }
+                        },
+                        "Initialize_managedBy": {
+                            "runAfter": {
+                                "Initialize_resourceGroupName": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "managedBy",
+                                        "type": "string",
+                                        "value": "Unmanaged"
+                                    }
+                                ]
+                            }
+                        },
+                        "Initialize_resourceGroupName": {
+                            "runAfter": {
+                                "Initialize_variable_resourceid_original": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "resourceGroupName",
+                                        "type": "string"
+                                    }
+                                ]
+                            }
+                        },
+                        "Initialize_variable_resourceid_original": {
+                            "runAfter": {
+                                "List_subscriptions": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "resourceid_original",
+                                        "type": "string"
+                                    }
+                                ]
+                            }
+                        },
+                        "List_subscriptions": {
+                            "runAfter": {},
+                            "type": "ApiConnection",
+                            "inputs": {
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['arm']['connectionId']"
+                                    }
+                                },
+                                "method": "get",
+                                "path": "/subscriptions",
+                                "queries": {
+                                    "x-ms-api-version": "2016-06-01"
+                                }
+                            }
+                        }
+                    },
+                    "outputs": {}
+                },
+                "parameters": {
+                    "$connections": {
+                        "value": {
+                            "arm": {
+                                "connectionId": "[concat('/subscriptions/',subscription().subscriptionId,'/resourceGroups/',resourceGroup().name,'/providers/Microsoft.Web/connections/arm')]",
+                                "connectionName": "arm",
+                                "connectionProperties": {
+                                    "authentication": {
+                                        "type": "ManagedServiceIdentity"
+                                    }
+                                },
+                                "id": "[concat('/subscriptions/',subscription().subscriptionId,'/providers/Microsoft.Web/locations/',resourceGroup().location,'/managedApis/arm')]"
+                            },
+                            "azureloganalyticsdatacollector": {
+                                "connectionId": "[concat('/subscriptions/',subscription().subscriptionId,'/resourceGroups/',resourceGroup().name,'/providers/Microsoft.Web/connections/azureloganalyticsdatacollector')]",
+                                "connectionName": "azureloganalyticsdatacollector",
+                                "id": "[concat('/subscriptions/',subscription().subscriptionId,'/providers/Microsoft.Web/locations/',resourceGroup().location,'/managedApis/azureloganalyticsdatacollector')]"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}
